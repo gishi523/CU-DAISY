@@ -39,5 +39,19 @@ cmake -DWITH_OPENCV_DAISY=ON
 ./cudaisy ./images/leuven/img1.png
 ```
 
+## Performance
+- Setup
+  - CPU             : Core-i7 6700K(4.00 GHz/4Core/8T)
+  - GPU             : GeForce GTX 1080
+  - Image size      : 900 x 600 pixel
+  - Descriptor size : 200
+
+Parameters|CPU[msec]|GPU[msec]|Speed Up
+---|---|---|---
+Normalize:FULL, Interpolation:OFF|178.5|8.1|22.2
+Normalize:FULL, Interpolation:ON|234.2|9.0|26.0
+Normalize:PARTIAL, Interpolation:OFF|172.7|8.1|21.5
+Normalize:PARTIAL, Interpolation:ON|235.0|10.0|23.5
+
 ## Author
 gishi523
