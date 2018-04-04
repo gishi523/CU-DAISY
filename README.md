@@ -2,10 +2,12 @@
 A CUDA implementation of DAISY descriptor
 
 ## Description
-- A CUDA implementation of DAISY descriptor based on [1,2].
+- A CUDA implementation of DAISY descriptor based on [1,2,3].
 
 ## References
 - [1] E. Tola, V. Lepetit, and P. Fua. Daisy: an Efficient Dense Descriptor Applied to Wide Baseline Stereo. IEEE Transactions on Pattern Analysis and Machine Intelligence (PAMI), 32(5):815–830, 2010.
+- [2] https://github.com/etola/libdaisy
+- [3] https://github.com/opencv/opencv_contrib/blob/master/modules/xfeatures2d/src/daisy.cpp
 
 ## Requirement
 - OpenCV with cv::cuda
