@@ -31,7 +31,12 @@ cmake -DWITH_OPENCV_DAISY=ON
 
 ## How to run
 ```
-./cudaisy input-image
+./cudaisy image
+```
+
+### Example
+ ```
+./cudaisy ./images/leuven/img1.png
 ```
 
 ## Author
