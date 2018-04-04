@@ -41,8 +41,8 @@ cmake -DWITH_OPENCV_DAISY=ON
 
 ## Performance
 - Setup
-  - CPU             : Core-i7 6700K(4.00 GHz/4Core/8T)
-  - GPU             : GeForce GTX 1080
+  - CPU             : OpenCV DAISY with Core-i7 6700K(4.00 GHz/4Core/8T)
+  - GPU             : CU-DAISY with GeForce GTX 1080
   - Image size      : 900 x 600 pixel
   - Descriptor size : 200
 
