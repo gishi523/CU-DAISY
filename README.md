@@ -16,7 +16,7 @@ A CUDA implementation of DAISY descriptor
 
 ## Limitations
 - Maximum descriptor size is 256
-- Supports only full scope (dense) mode and no orientation
+- Supports only full scope (dense) mode
 
 ## How to build
 ```
