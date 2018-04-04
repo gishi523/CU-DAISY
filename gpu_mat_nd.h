@@ -145,7 +145,7 @@ public:
 		return (T*)this->data + ((i * size2 + j) * size3 + k) * size4 + l;
 	}
 
-	template <typename T> inline const T* ptr(int i = 0, int j = 0, int k = 0) const
+	template <typename T> inline const T* ptr(int i = 0, int j = 0, int k = 0, int l = 0) const
 	{
 		return (T*)this->data + ((i * size2 + j) * size3 + k) * size4 + l;
 	}

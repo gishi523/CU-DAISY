@@ -22,18 +22,19 @@ void benchmark(const cv::Mat& image, float R = 15, int Q = 3, int T = 8, int H =
 	std::cout << "Normalize       : " << normStr[norm] << std::endl;
 	std::cout << "Interpolation   : " << (interpolation ? "True" : "False") << std::endl;
 
-#ifdef WITH_OPENCV_DAISY
-	auto daisyCPU = cv::xfeatures2d::DAISY::create(R, Q, T, H, norm, cv::noArray(), interpolation, false);
-#endif
-
 	CUDAISY::Parameters(R, Q, T, H, norm, interpolation);
 	CUDAISY daisyGPU(CUDAISY::Parameters(R, Q, T, H, norm, interpolation));
 
 	cv::Mat descCPU, descGPU;
 	cv::cuda::GpuMat d_image(image);
 	cv::cuda::GpuMat d_desc;
+	uint64_t sumGPU = 0;
 
-	uint64_t sumCPU = 0, sumGPU = 0;
+#ifdef WITH_OPENCV_DAISY
+	auto daisyCPU = cv::xfeatures2d::DAISY::create(R, Q, T, H, norm, cv::noArray(), interpolation, false);
+	uint64_t sumCPU = 0;
+#endif
+
 	for (int i = 0; i <= iterations; i++)
 	{
 		const auto t0 = std::chrono::system_clock::now();

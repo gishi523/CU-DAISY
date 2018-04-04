@@ -47,7 +47,7 @@ Recognition, Alaska, USA, June 2008
 */
 
 #include "cudaisy.h"
-#include <cuda_runtime.h>cache
+#include <cuda_runtime.h>
 
 void calc1stLayer(const cv::cuda::GpuMat& dx, const cv::cuda::GpuMat& dy, cv::cuda::GpuMat& G,
 	double cost, double sint, cv::cuda::Stream& stream = cv::cuda::Stream::Null());
