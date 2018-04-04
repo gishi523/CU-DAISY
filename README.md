@@ -14,6 +14,10 @@ A CUDA implementation of DAISY descriptor
 - CUDA
 - OpenCV xfeatures2d module (optional)
 
+## Limitations
+- Maximum descriptor size is 256
+- Supports only full scope (dense) mode and no orientation
+
 ## How to build
 ```
 $ git clone https://github.com/gishi523/CU-DAISY.git
