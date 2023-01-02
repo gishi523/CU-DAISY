@@ -2,6 +2,7 @@
 #define __CUDAISY_H__
 
 #include <opencv2/opencv.hpp>
+#include <opencv2/cudafilters.hpp>
 #include "gpu_mat_nd.h"
 
 /** @brief DAISY class.

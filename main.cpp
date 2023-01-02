@@ -31,7 +31,8 @@ void benchmark(const cv::Mat& image, float R = 15, int Q = 3, int T = 8, int H =
 	uint64_t sumGPU = 0;
 
 #ifdef WITH_OPENCV_DAISY
-	auto daisyCPU = cv::xfeatures2d::DAISY::create(R, Q, T, H, norm, cv::noArray(), interpolation, false);
+	using DAISY = cv::xfeatures2d::DAISY;
+	auto daisyCPU = DAISY::create(R, Q, T, H, DAISY::NormalizationType(norm), cv::noArray(), interpolation, false);
 	uint64_t sumCPU = 0;
 #endif
 

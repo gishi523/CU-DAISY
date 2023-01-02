@@ -1,8 +1,9 @@
 #include "cudaisy.h"
+
+#include <cuda.h>
 #include <cuda_runtime.h>
 #include <vector_types.h>
 #include <device_launch_parameters.h>
-#include <device_functions.hpp>
 #include <opencv2/core/cuda_stream_accessor.hpp>
 
 #define CUDA_CHECK(err) \
@@ -11,6 +12,12 @@ do {\
 		printf("[CUDA Error] %s (code: %d) at %s:%d\n", cudaGetErrorString(err), err, __FILE__, __LINE__); \
 	} \
 } while (0)
+
+#if CUDA_VERSION >= 9000
+#define SHFL_XOR(var, delta) __shfl_xor_sync(0xffffffff, (var), (delta))
+#else
+#define SHFL_XOR(var, delta) __shfl_xor((var), (delta))
+#endif
 
 static const int REORDER_BLOCK_X = 32;
 static const int REORDER_BLOCK_Y = 8;
@@ -120,7 +127,7 @@ __device__ inline void normalize(const float* histogram, float* descriptor, int 
 		sum += histogram[i] * histogram[i];
 
 	for (int mask = 16; mask > 0; mask /= 2)
-		sum += __shfl_xor(sum, mask);
+		sum += SHFL_XOR(sum, mask);
 
 	const float scale = sum > 0.f ? rsqrtf(sum) : 1.f;
 	for (int i = threadIdx.x; i < D; i += blockDim.x)
