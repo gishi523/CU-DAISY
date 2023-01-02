@@ -1,9 +1,7 @@
 #ifndef __GPU_MAX_ND_H__
 #define __GPU_MAX_ND_H__
 
-#include <opencv2/opencv.hpp>
-#include <device_functions.h>
-#include <host_defines.h>
+#include <opencv2/core/cuda.hpp>
 
 template <typename T>
 struct GpuMat3DPtr

@@ -47,13 +47,50 @@ Recognition, Alaska, USA, June 2008
 */
 
 #include "cudaisy.h"
+
 #include <cuda_runtime.h>
+
+#include <opencv2/core/cuda.hpp>
+#include <opencv2/cudafilters.hpp>
+
+#include "gpu_mat_nd.h"
 
 void calc1stLayer(const cv::cuda::GpuMat& dx, const cv::cuda::GpuMat& dy, cv::cuda::GpuMat& G,
 	double cost, double sint, cv::cuda::Stream& stream = cv::cuda::Stream::Null());
 void reorderLayer(const GpuMat3D& src, GpuMat3D& dst);
 void calcDescriptors(const GpuMat4D& layers, cv::cuda::GpuMat& descriptors,
 	float R, int Q, int T, int H, int norm, bool interpolation);
+
+static void getInputMat(cv::InputArray src, cv::cuda::GpuMat& dst)
+{
+	switch (src.kind())
+	{
+	case cv::_InputArray::KindFlag::MAT:
+		dst.upload(src);
+		break;
+	case cv::_InputArray::KindFlag::CUDA_GPU_MAT:
+		dst = src.getGpuMat();
+		break;
+	default:
+		CV_Error(cv::Error::StsBadArg, "Unsupported");
+	}
+}
+
+static void getOutputMat(cv::OutputArray src, cv::cuda::GpuMat& dst, int rows, int cols, int type)
+{
+	switch (src.kind())
+	{
+	case cv::_InputArray::KindFlag::MAT:
+		dst.create(rows, cols, type);
+		break;
+	case cv::_InputArray::KindFlag::CUDA_GPU_MAT:
+		src.create(rows, cols, type);
+		dst = src.getGpuMat();
+		break;
+	default:
+		CV_Error(cv::Error::StsBadArg, "Unsupported");
+	}
+}
 
 static cv::Size calcKernelSize(double sigma, double factor)
 {
@@ -64,109 +101,152 @@ static cv::Size calcKernelSize(double sigma, double factor)
 	return cv::Size(ksize, ksize);
 }
 
-void CUDAISY::CalcOrientationLayers::initFilters(float R, int Q, int H)
+struct CalcOrientationLayers
 {
-	using namespace cv::cuda;
-	const int border = cv::BORDER_REPLICATE;
+	using Filter = cv::Ptr<cv::cuda::Filter>;
 
-	// for horizontal and vertical gradients
-	if (!gauss0)
-		gauss0 = createGaussianFilter(CV_32F, CV_32F, cv::Size(5, 5), 0.5, 0.5, border, border);
-	if (!sobelx)
-		sobelx = createSobelFilter(CV_32F, CV_32F, 1, 0, 1, 0.5, border, border);
-	if (!sobely)
-		sobely = createSobelFilter(CV_32F, CV_32F, 0, 1, 1, 0.5, border, border);
-
-	// for first orientation maps
-	const double sigma1 = sqrt(1.6 * 1.6 - 0.25);
-	gauss1.resize(H);
-	for (int i = 0; i < H; i++)
-		if (!gauss1[i])
-			gauss1[i] = createGaussianFilter(CV_32F, CV_32F, calcKernelSize(sigma1, 5), sigma1, sigma1, border, border);
-
-	// for following orientation maps
-	cv::Mat1d sigmas(Q, 1);
-	for (int i = 0; i < Q; i++)
-		sigmas(i) = R * (i + 1) / (2 * Q);
-
-	gauss2.resize(Q);
-	for (int i = 0; i < Q; i++)
+	void CalcOrientationLayers::initFilters(float R, int Q, int H)
 	{
-		const double sigma = i == 0 ? sigmas(0) : sqrt(sigmas(i) * sigmas(i) - sigmas(i - 1) * sigmas(i - 1));
-		gauss2[i].resize(H);
-		for (int j = 0; j < H; j++)
+		using namespace cv::cuda;
+		const int border = cv::BORDER_REPLICATE;
+
+		// for horizontal and vertical gradients
+		if (!gauss0)
+			gauss0 = createGaussianFilter(CV_32F, CV_32F, cv::Size(5, 5), 0.5, 0.5, border, border);
+		if (!sobelx)
+			sobelx = createSobelFilter(CV_32F, CV_32F, 1, 0, 1, 0.5, border, border);
+		if (!sobely)
+			sobely = createSobelFilter(CV_32F, CV_32F, 0, 1, 1, 0.5, border, border);
+
+		// for first orientation maps
+		const double sigma1 = sqrt(1.6 * 1.6 - 0.25);
+		gauss1.resize(H);
+		for (int i = 0; i < H; i++)
+			if (!gauss1[i])
+				gauss1[i] = createGaussianFilter(CV_32F, CV_32F, calcKernelSize(sigma1, 5), sigma1, sigma1, border, border);
+
+		// for following orientation maps
+		cv::Mat1d sigmas(Q, 1);
+		for (int i = 0; i < Q; i++)
+			sigmas(i) = R * (i + 1) / (2 * Q);
+
+		gauss2.resize(Q);
+		for (int i = 0; i < Q; i++)
 		{
-			if (!gauss2[i][j])
-				gauss2[i][j] = createGaussianFilter(CV_32F, CV_32F, calcKernelSize(sigma, 5), sigma, sigma, border, border);
-		}
-	}
-}
-
-void CUDAISY::CalcOrientationLayers::operator()(const cv::cuda::GpuMat& image, GpuMat4D& layers, float R, int Q, int H)
-{
-	initFilters(R, Q, H);
-	buffers.create(Q + 1, H, image.rows, image.cols, CV_32F);
-	layers.create(Q, image.rows, image.cols, H, CV_32F);
-
-	// compute horizontal and vertical gradients
-	image.convertTo(fimage, CV_32F, 1. / 255);
-	gauss0->apply(fimage, blur);
-	sobelx->apply(blur, dx);
-	sobely->apply(blur, dy);
-
-	// apply consecutive convolutions
-	std::vector<cv::cuda::Stream> streams(H);
-	tmps.resize(H);
-
-	// compute first orientation maps
-	for (int i = 0; i < H; i++)
-	{
-		cv::cuda::GpuMat G1(image.rows, image.cols, CV_32F, buffers.ptr<float>(0, i));
-		const double theta = CV_2PI * i / H;
-		calc1stLayer(dx, dy, tmps[i], cos(theta), sin(theta), streams[i]);
-		gauss1[i]->apply(tmps[i], G1, streams[i]);
-	}
-
-	// consecutive convolutions
-	for (int i = 0; i < Q; i++)
-	{
-		// cv::cuda's Gaussian filter shares a constant memory which contains kernel value.
-		// Therefore, there needs synchronization before kernel value changes.
-		cudaDeviceSynchronize();
-		for (int j = 0; j < H; j++)
-		{
-			cv::cuda::GpuMat src(image.rows, image.cols, CV_32F, buffers.ptr<float>(i + 0, j));
-			cv::cuda::GpuMat dst(image.rows, image.cols, CV_32F, buffers.ptr<float>(i + 1, j));
-			gauss2[i][j]->apply(src, dst, streams[j]);
+			const double sigma = i == 0 ? sigmas(0) : sqrt(sigmas(i) * sigmas(i) - sigmas(i - 1) * sigmas(i - 1));
+			gauss2[i].resize(H);
+			for (int j = 0; j < H; j++)
+			{
+				if (!gauss2[i][j])
+					gauss2[i][j] = createGaussianFilter(CV_32F, CV_32F, calcKernelSize(sigma, 5), sigma, sigma, border, border);
+			}
 		}
 	}
 
-	// reorganizes the cube data so that histograms are sequential in memory
-	for (int i = 0; i < Q; i++)
+	void CalcOrientationLayers::operator()(const cv::cuda::GpuMat& image, GpuMat4D& layers, float R, int Q, int H)
 	{
-		GpuMat3D buffer(H, image.rows, image.cols, CV_32F, buffers.ptr<float>(i + 1));
-		GpuMat3D layer(image.rows, image.cols, H, CV_32F, layers.ptr<float>(i));
-		reorderLayer(buffer, layer);
+		initFilters(R, Q, H);
+		buffers.create(Q + 1, H, image.rows, image.cols, CV_32F);
+		layers.create(Q, image.rows, image.cols, H, CV_32F);
+
+		// compute horizontal and vertical gradients
+		image.convertTo(fimage, CV_32F, 1. / 255);
+		gauss0->apply(fimage, blur);
+		sobelx->apply(blur, dx);
+		sobely->apply(blur, dy);
+
+		// apply consecutive convolutions
+		std::vector<cv::cuda::Stream> streams(H);
+		tmps.resize(H);
+
+		// compute first orientation maps
+		for (int i = 0; i < H; i++)
+		{
+			cv::cuda::GpuMat G1(image.rows, image.cols, CV_32F, buffers.ptr<float>(0, i));
+			const double theta = CV_2PI * i / H;
+			calc1stLayer(dx, dy, tmps[i], cos(theta), sin(theta), streams[i]);
+			gauss1[i]->apply(tmps[i], G1, streams[i]);
+		}
+
+		// consecutive convolutions
+		for (int i = 0; i < Q; i++)
+		{
+			// cv::cuda's Gaussian filter shares a constant memory which contains kernel value.
+			// Therefore, there needs synchronization before kernel value changes.
+			cudaDeviceSynchronize();
+			for (int j = 0; j < H; j++)
+			{
+				cv::cuda::GpuMat src(image.rows, image.cols, CV_32F, buffers.ptr<float>(i + 0, j));
+				cv::cuda::GpuMat dst(image.rows, image.cols, CV_32F, buffers.ptr<float>(i + 1, j));
+				gauss2[i][j]->apply(src, dst, streams[j]);
+			}
+		}
+
+		// reorganizes the cube data so that histograms are sequential in memory
+		for (int i = 0; i < Q; i++)
+		{
+			GpuMat3D buffer(H, image.rows, image.cols, CV_32F, buffers.ptr<float>(i + 1));
+			GpuMat3D layer(image.rows, image.cols, H, CV_32F, layers.ptr<float>(i));
+			reorderLayer(buffer, layer);
+		}
 	}
+
+	cv::cuda::GpuMat fimage, blur, dx, dy;
+	std::vector<cv::cuda::GpuMat> tmps;
+	GpuMat4D buffers;
+
+	Filter sobelx, sobely, gauss0;
+	std::vector<Filter> gauss1;
+	std::vector<std::vector<Filter>> gauss2;
+};
+
+class CUDAISYImpl : public CUDAISY
+{
+public:
+
+	CUDAISYImpl(const Parameters& param) : param_(param) {}
+
+	// full scope
+	void compute(cv::InputArray _image, cv::OutputArray _descriptors) override
+	{
+		CV_Assert(_image.type() == CV_8U);
+
+		const float R = param_.R;
+		const int Q = param_.Q;
+		const int T = param_.T;
+		const int H = param_.H;
+		const int S = Q * T + 1;
+		const int D = S * H;
+
+		getInputMat(_image, image_);
+		getOutputMat(_descriptors, descriptors_, image_.size().area(), D, CV_32F);
+
+		calcOrientationLayers_(image_, layers_, R, Q, H);
+		calcDescriptors(layers_, descriptors_, R, Q, T, H, param_.norm, param_.interpolation);
+
+		if (_descriptors.kind() == cv::_InputArray::KindFlag::MAT)
+			descriptors_.download(_descriptors);
+	}
+
+private:
+
+	Parameters param_;
+	GpuMat4D layers_;
+	CalcOrientationLayers calcOrientationLayers_;
+
+	cv::cuda::GpuMat image_, descriptors_;
+};
+
+cv::Ptr<CUDAISY> CUDAISY::create(const Parameters& param)
+{
+	return cv::makePtr<CUDAISYImpl>(param);
 }
 
-CUDAISY::CUDAISY(const Parameters& param) : param_(param)
+CUDAISY::~CUDAISY()
 {
 }
 
-// full scope
-void CUDAISY::compute(const cv::cuda::GpuMat& image, cv::cuda::GpuMat& descriptors)
+CUDAISY::Parameters::Parameters(float R, int Q, int T, int H, int norm, bool interpolation)
+	: R(R), Q(Q), T(T), H(H), norm(norm), interpolation(interpolation)
 {
-	CV_Assert(image.type() == CV_8U);
-
-	const float R = param_.R;
-	const int Q = param_.Q;
-	const int T = param_.T;
-	const int H = param_.H;
-	const int S = Q * T + 1;
-	const int D = S * H;
-
-	descriptors.create(image.rows * image.cols, D, CV_32F);
-	calcOrientationLayers_(image, layers_, R, Q, H);
-	calcDescriptors(layers_, descriptors, R, Q, T, H, param_.norm, param_.interpolation);
 }

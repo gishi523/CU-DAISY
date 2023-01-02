@@ -1,9 +1,7 @@
 #ifndef __CUDAISY_H__
 #define __CUDAISY_H__
 
-#include <opencv2/opencv.hpp>
-#include <opencv2/cudafilters.hpp>
-#include "gpu_mat_nd.h"
+#include <opencv2/core.hpp>
 
 /** @brief DAISY class.
 
@@ -16,9 +14,9 @@ public:
 
 	enum
 	{
-		NORM_NONE = 100,    //!< will not do any normalization
+		NORM_NONE    = 100, //!< will not do any normalization
 		NORM_PARTIAL = 101, //!< histograms are normalized independently for L2 norm equal to 1.0
-		NORM_FULL = 102,    //!< descriptors are normalized for L2 norm equal to 1.0
+		NORM_FULL    = 102, //!< descriptors are normalized for L2 norm equal to 1.0
 	};
 
 	// S: number of histograms used in the descriptor = Q * T + 1
@@ -33,40 +31,18 @@ public:
 		bool interpolation; //!< switch to disable interpolation for speed improvement at minor quality loss
 
 		// default settings
-		Parameters(float R = 15, int Q = 3, int T = 8, int H = 8, int norm = NORM_FULL, bool interpolation = true)
-			: R(R), Q(Q), T(T), H(H), norm(norm), interpolation(interpolation)
-		{
-		}
+		Parameters(float R = 15, int Q = 3, int T = 8, int H = 8, int norm = NORM_FULL, bool interpolation = true);
 	};
 
-	CUDAISY(const Parameters& param = Parameters());
+	static cv::Ptr<CUDAISY> create(const Parameters& param = Parameters());
 
 	/** @brief Calculates an DAISY descriptor
 	@param image image to extract descriptors
 	@param descriptors resulted descriptors array for all image pixels
 	*/
-	void compute(const cv::cuda::GpuMat& image, cv::cuda::GpuMat& descriptors);
+	virtual void compute(cv::InputArray image, cv::OutputArray descriptors) = 0;
 
-private:
-
-	struct CalcOrientationLayers
-	{
-		using Filter = cv::Ptr<cv::cuda::Filter>;
-		void initFilters(float R, int Q, int H);
-		void operator()(const cv::cuda::GpuMat& image, GpuMat4D& layers, float R, int Q, int H);
-
-		cv::cuda::GpuMat fimage, blur, dx, dy;
-		std::vector<cv::cuda::GpuMat> tmps;
-		GpuMat4D buffers;
-
-		Filter sobelx, sobely, gauss0;
-		std::vector<Filter> gauss1;
-		std::vector<std::vector<Filter>> gauss2;
-	};
-
-	Parameters param_;
-	GpuMat4D layers_;
-	CalcOrientationLayers calcOrientationLayers_;
+	virtual ~CUDAISY();
 };
 
 #endif // !__CUDAISY_H__

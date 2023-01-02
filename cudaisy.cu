@@ -4,7 +4,10 @@
 #include <cuda_runtime.h>
 #include <vector_types.h>
 #include <device_launch_parameters.h>
+
 #include <opencv2/core/cuda_stream_accessor.hpp>
+
+#include "gpu_mat_nd.h"
 
 #define CUDA_CHECK(err) \
 do {\

@@ -22,8 +22,7 @@ void benchmark(const cv::Mat& image, float R = 15, int Q = 3, int T = 8, int H =
 	std::cout << "Normalize       : " << normStr[norm] << std::endl;
 	std::cout << "Interpolation   : " << (interpolation ? "True" : "False") << std::endl;
 
-	CUDAISY::Parameters(R, Q, T, H, norm, interpolation);
-	CUDAISY daisyGPU(CUDAISY::Parameters(R, Q, T, H, norm, interpolation));
+	auto daisyGPU = CUDAISY::create(CUDAISY::Parameters(R, Q, T, H, norm, interpolation));
 
 	cv::Mat descCPU, descGPU;
 	cv::cuda::GpuMat d_image(image);
@@ -40,7 +39,7 @@ void benchmark(const cv::Mat& image, float R = 15, int Q = 3, int T = 8, int H =
 	{
 		const auto t0 = std::chrono::system_clock::now();
 
-		daisyGPU.compute(d_image, d_desc);
+		daisyGPU->compute(d_image, d_desc);
 		cudaDeviceSynchronize();
 
 		const auto t1 = std::chrono::system_clock::now();
